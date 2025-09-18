@@ -1,0 +1,402 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id         String   @id @default(uuid())
+  name       String
+  cnpj       String   @unique
+  settings   Json     @default("{}")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  userTenants   UserTenant[]
+  costCenters   CostCenter[]
+  projects      Project[]
+  policies      Policy[]
+  budgets       Budget[]
+  trips         Trip[]
+  advances      Advance[]
+  expenses      Expense[]
+  reimbursements Reimbursement[]
+  auditLogs     AuditLog[]
+  webhooks      Webhook[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(COLLABORATOR)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  userTenants        UserTenant[]
+  requestedTrips     Trip[]        @relation("TripRequester")
+  managedTrips       Trip[]        @relation("TripManager")
+  requestedAdvances  Advance[]     @relation("AdvanceRequester")
+  approvedAdvances   Advance[]     @relation("AdvanceApprover")
+  expenses           Expense[]
+  reimbursements     Reimbursement[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model UserTenant {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  tenantId     String    @map("tenant_id")
+  roleOverride UserRole? @map("role_override")
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_tenants")
+}
+
+model CostCenter {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  name     String
+  code     String
+  active   Boolean @default(true)
+
+  // Relations
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projects   Project[]
+  budgets    Budget[]
+  trips      Trip[]
+  expenses   Expense[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("cost_centers")
+}
+
+model Project {
+  id           String  @id @default(uuid())
+  tenantId     String  @map("tenant_id")
+  costCenterId String? @map("cost_center_id")
+  name         String
+  code         String
+  active       Boolean @default(true)
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id])
+  budgets    Budget[]
+  trips      Trip[]
+  expenses   Expense[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("projects")
+}
+
+model Policy {
+  id                  String           @id @default(uuid())
+  tenantId            String           @map("tenant_id")
+  category            ExpenseCategory
+  receiptRequiredOver Decimal?         @map("receipt_required_over") @db.Decimal(10, 2)
+  perDiemAmount       Decimal?         @map("per_diem_amount") @db.Decimal(10, 2)
+  kmRate              Decimal?         @map("km_rate") @db.Decimal(10, 4)
+  dailyLimit          Decimal?         @map("daily_limit") @db.Decimal(10, 2)
+  notes               String?
+  active              Boolean          @default(true)
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, category])
+  @@index([tenantId])
+  @@map("policies")
+}
+
+model Budget {
+  id           String       @id @default(uuid())
+  tenantId     String       @map("tenant_id")
+  year         Int
+  period       BudgetPeriod
+  costCenterId String       @map("cost_center_id")
+  projectId    String?      @map("project_id")
+  amount       Decimal      @db.Decimal(15, 2)
+  spentAmount  Decimal      @default(0) @map("spent_amount") @db.Decimal(15, 2)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costCenter CostCenter  @relation(fields: [costCenterId], references: [id])
+  project    Project?    @relation(fields: [projectId], references: [id])
+
+  @@unique([tenantId, year, period, costCenterId, projectId])
+  @@index([tenantId])
+  @@map("budgets")
+}
+
+model Trip {
+  id           String     @id @default(uuid())
+  tenantId     String     @map("tenant_id")
+  requesterId  String     @map("requester_id")
+  managerId    String?    @map("manager_id")
+  origin       String
+  destination  String
+  startDate    DateTime   @map("start_date")
+  endDate      DateTime   @map("end_date")
+  purpose      String
+  status       TripStatus @default(DRAFT)
+  costCenterId String     @map("cost_center_id")
+  projectId    String?    @map("project_id")
+  notes        String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requester  User        @relation("TripRequester", fields: [requesterId], references: [id])
+  manager    User?       @relation("TripManager", fields: [managerId], references: [id])
+  costCenter CostCenter  @relation(fields: [costCenterId], references: [id])
+  project    Project?    @relation(fields: [projectId], references: [id])
+  advances   Advance[]
+  expenses   Expense[]
+
+  @@index([tenantId])
+  @@index([requesterId])
+  @@index([status])
+  @@map("trips")
+}
+
+model Advance {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  tripId          String        @map("trip_id")
+  requesterId     String        @map("requester_id")
+  approverId      String?       @map("approver_id")
+  amountRequested Decimal       @map("amount_requested") @db.Decimal(10, 2)
+  amountApproved  Decimal?      @map("amount_approved") @db.Decimal(10, 2)
+  status          AdvanceStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  requester User   @relation("AdvanceRequester", fields: [requesterId], references: [id])
+  approver  User?  @relation("AdvanceApprover", fields: [approverId], references: [id])
+
+  @@index([tenantId])
+  @@index([tripId])
+  @@map("advances")
+}
+
+model Expense {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  tripId          String?         @map("trip_id")
+  userId          String          @map("user_id")
+  category        ExpenseCategory
+  date            DateTime
+  currency        String          @default("BRL")
+  amount          Decimal         @db.Decimal(10, 2)
+  amountBrl       Decimal         @map("amount_brl") @db.Decimal(10, 2)
+  hasReceipt      Boolean         @default(false) @map("has_receipt")
+  vendor          String?
+  notes           String?
+  status          ExpenseStatus   @default(DRAFT)
+  policyCheck     Json            @default("{}") @map("policy_check_json")
+  costCenterId    String          @map("cost_center_id")
+  projectId       String?         @map("project_id")
+  kmDriven        Decimal?        @map("km_driven") @db.Decimal(10, 2)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  trip       Trip?         @relation(fields: [tripId], references: [id])
+  user       User          @relation(fields: [userId], references: [id])
+  costCenter CostCenter    @relation(fields: [costCenterId], references: [id])
+  project    Project?      @relation(fields: [projectId], references: [id])
+  files      ExpenseFile[]
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([date])
+  @@map("expenses")
+}
+
+model ExpenseFile {
+  id         String @id @default(uuid())
+  expenseId  String @map("expense_id")
+  url        String
+  storageKey String @map("storage_key")
+  mimeType   String @map("mime_type")
+  size       Int
+
+  // Relations
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@map("expense_files")
+}
+
+model Reimbursement {
+  id          String              @id @default(uuid())
+  tenantId    String              @map("tenant_id")
+  userId      String              @map("user_id")
+  period      String
+  totalAmount Decimal             @map("total_amount") @db.Decimal(15, 2)
+  status      ReimbursementStatus @default(PENDING)
+  exportedAt  DateTime?           @map("exported_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([period])
+  @@map("reimbursements")
+}
+
+model FxRate {
+  id       String   @id @default(uuid())
+  date     DateTime @unique
+  base     String   @default("BRL")
+  currency String
+  rate     Decimal  @db.Decimal(18, 8)
+
+  @@unique([date, currency])
+  @@map("fx_rates")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  actorUserId  String   @map("actor_user_id")
+  entity       String
+  entityId     String   @map("entity_id")
+  action       String
+  fromJson     Json?    @map("from_json")
+  toJson       Json?    @map("to_json")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorUser User   @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Webhook {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  url      String
+  secret   String
+  active   Boolean @default(true)
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("webhooks")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  MANAGER
+  COLLABORATOR
+
+  @@map("user_role")
+}
+
+enum ExpenseCategory {
+  FOOD
+  ACCOMMODATION
+  TRANSPORT
+  TOLL
+  PARKING
+  FUEL
+  OTHER
+
+  @@map("expense_category")
+}
+
+enum BudgetPeriod {
+  YEARLY
+  QUARTERLY
+  MONTHLY
+
+  @@map("budget_period")
+}
+
+enum TripStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+
+  @@map("trip_status")
+}
+
+enum AdvanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+
+  @@map("advance_status")
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ADJUSTED
+  REIMBURSED
+
+  @@map("expense_status")
+}
+
+enum ReimbursementStatus {
+  PENDING
+  PAID
+  EXPORTED
+
+  @@map("reimbursement_status")
+}

@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: travel-expense-postgres
+    environment:
+      POSTGRES_USER: travel_user
+      POSTGRES_PASSWORD: travel_pass
+      POSTGRES_DB: travel_expense_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - travel-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: travel-expense-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - travel-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: travel-expense-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - travel-network
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: travel-expense-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - travel-network
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  travel-network:
+    driver: bridge

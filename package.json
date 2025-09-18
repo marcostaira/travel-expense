@@ -1,0 +1,18 @@
+{
+  "name": "travel-expense-saas",
+  "version": "1.0.0",
+  "description": "SaaS de Gestão de Despesas de Viagem Multi-tenant",
+  "scripts": {
+    "setup": "npm run api:install && npm run app:install",
+    "api:install": "cd packages/api && npm install",
+    "app:install": "cd packages/mobile && flutter pub get",
+    "dev:api": "cd packages/api && npm run start:dev",
+    "dev:db": "docker-compose up -d postgres redis",
+    "migrate": "cd packages/api && npx prisma migrate dev",
+    "seed": "cd packages/api && npm run seed",
+    "build:app": "cd packages/mobile && flutter build web"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}
