@@ -68,3 +68,51 @@ export class AuthController {
     description: 'Usuário e empresa criados com sucesso',
   })
   async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Renovar access token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Token renovado com sucesso',
+    schema: {
+      type: 'object',
+      properties: {
+        accessToken: { type: 'string' },
+        expiresIn: { type: 'number' },
+      },
+    },
+  })
+  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshToken(refreshTokenDto);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Solicitar reset de senha' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email de recuperação enviado (se o email existir)',
+  })
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(forgotPasswordDto);
+    return { message: 'Se o email existir, você receberá instruções para reset' };
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resetar senha com token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Senha alterada com sucesso',
+  })
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    await this.authService.resetPassword(resetPasswordDto);
+    return { message: 'Senha alterada com sucesso' };
+  }
+}
