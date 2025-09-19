@@ -1,43 +1,70 @@
 version: "3.8"
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: travel-expense-postgres
     environment:
-      POSTGRES_USER: travel_user
-      POSTGRES_PASSWORD: travel_pass
-      POSTGRES_DB: travel_expense_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: travel_expense
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./packages/api/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - travel-network
+      - travel-expense-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: travel-expense-redis
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
-      - travel-network
+      - travel-expense-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass "redis123"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # MinIO S3-compatible storage
   minio:
     image: minio/minio:latest
     container_name: travel-expense-minio
-    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
     networks:
-      - travel-network
+      - travel-expense-network
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
+  # MailHog for email testing
   mailhog:
     image: mailhog/mailhog:latest
     container_name: travel-expense-mailhog
@@ -45,12 +72,58 @@ services:
       - "1025:1025"
       - "8025:8025"
     networks:
-      - travel-network
+      - travel-expense-network
+    restart: unless-stopped
+
+  # API Application (optional for development)
+  api:
+    build:
+      context: ./packages/api
+      dockerfile: Dockerfile
+    container_name: travel-expense-api
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/travel_expense
+      REDIS_URL: redis://:redis123@redis:6379
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_REFRESH_SECRET: your-super-secret-refresh-key-change-in-production
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: travel-expenses
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      MAIL_USER: ""
+      MAIL_PASS: ""
+      CORS_ORIGIN: http://localhost:3001,http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - travel-expense-network
+    restart: unless-stopped
+    volumes:
+      - ./packages/api:/app
+      - /app/node_modules
+    profiles:
+      - full-stack
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
+    driver: local
   minio_data:
+    driver: local
 
 networks:
-  travel-network:
+  travel-expense-network:
     driver: bridge
+    name: travel-expense-network

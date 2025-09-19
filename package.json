@@ -2,17 +2,47 @@
   "name": "travel-expense-saas",
   "version": "1.0.0",
   "description": "SaaS de Gestão de Despesas de Viagem Multi-tenant",
+  "private": true,
   "scripts": {
     "setup": "npm run api:install && npm run app:install",
     "api:install": "cd packages/api && npm install",
     "app:install": "cd packages/mobile && flutter pub get",
     "dev:api": "cd packages/api && npm run start:dev",
-    "dev:db": "docker-compose up -d postgres redis",
+    "dev:db": "docker-compose up -d postgres redis minio",
+    "dev": "concurrently \"npm run dev:db\" \"npm run dev:api\"",
     "migrate": "cd packages/api && npx prisma migrate dev",
     "seed": "cd packages/api && npm run seed",
-    "build:app": "cd packages/mobile && flutter build web"
+    "build:api": "cd packages/api && npm run build",
+    "build:app": "cd packages/mobile && flutter build web",
+    "test:api": "cd packages/api && npm run test",
+    "test:app": "cd packages/mobile && flutter test",
+    "lint": "eslint packages/api/src --ext .ts --fix",
+    "format": "prettier --write packages/api/src/**/*.ts",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "prettier": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "saas",
+    "travel-expense",
+    "multi-tenant",
+    "nestjs",
+    "flutter",
+    "prisma",
+    "postgresql"
+  ],
+  "author": "Travel Expense Team",
+  "license": "MIT"
 }
