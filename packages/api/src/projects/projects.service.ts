@@ -1,7 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateProjectDto } from './dto/create-project.dto';
-import { UpdateProjectDto } from './dto/update-project.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
 
 @Injectable()
 export class ProjectsService {
@@ -18,7 +22,7 @@ export class ProjectsService {
     });
 
     if (existingProject) {
-      throw new BadRequestException('Código do projeto já existe');
+      throw new BadRequestException("Código do projeto já existe");
     }
 
     // Verify cost center exists if provided
@@ -32,7 +36,7 @@ export class ProjectsService {
       });
 
       if (!costCenter) {
-        throw new NotFoundException('Centro de custo não encontrado');
+        throw new NotFoundException("Centro de custo não encontrado");
       }
     }
 
@@ -72,7 +76,7 @@ export class ProjectsService {
           },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
   }
 
@@ -88,8 +92,13 @@ export class ProjectsService {
           },
         },
         budgets: {
-          where: { year: new Date().getFullYear() },
-          orderBy: { period: 'asc' },
+          select: {
+            id: true,
+            year: true,
+            period: true,
+            amount: true,
+            spentAmount: true,
+          },
         },
         _count: {
           select: {
@@ -101,28 +110,32 @@ export class ProjectsService {
     });
 
     if (!project) {
-      throw new NotFoundException('Projeto não encontrado');
+      throw new NotFoundException("Projeto não encontrado");
     }
 
     return project;
   }
 
-  async update(tenantId: string, id: string, updateProjectDto: UpdateProjectDto) {
-    const project = await this.findOne(tenantId, id);
+  async update(
+    tenantId: string,
+    id: string,
+    updateProjectDto: UpdateProjectDto
+  ) {
+    await this.findOne(tenantId, id);
 
-    // Check if new code already exists for this tenant (if code is being updated)
-    if (updateProjectDto.code && updateProjectDto.code !== project.code) {
+    // Check if code is being changed and already exists
+    if (updateProjectDto.code) {
       const existingProject = await this.prisma.project.findFirst({
         where: {
           tenantId,
           code: updateProjectDto.code,
-          active: true,
           id: { not: id },
+          active: true,
         },
       });
 
       if (existingProject) {
-        throw new BadRequestException('Código do projeto já existe');
+        throw new BadRequestException("Código do projeto já existe");
       }
     }
 
@@ -137,7 +150,7 @@ export class ProjectsService {
       });
 
       if (!costCenter) {
-        throw new NotFoundException('Centro de custo não encontrado');
+        throw new NotFoundException("Centro de custo não encontrado");
       }
     }
 
@@ -173,7 +186,10 @@ export class ProjectsService {
       },
     });
 
-    const hasUsage = usage._count.budgets > 0 || usage._count.trips > 0 || usage._count.expenses > 0;
+    const hasUsage =
+      usage._count.budgets > 0 ||
+      usage._count.trips > 0 ||
+      usage._count.expenses > 0;
 
     if (hasUsage) {
       // Soft delete if project is being used
@@ -181,11 +197,24 @@ export class ProjectsService {
         where: { id },
         data: { active: false },
       });
-      return { message: 'Projeto desativado com sucesso (há registros vinculados)' };
+      return {
+        message: "Projeto desativado com sucesso (há registros vinculados)",
+      };
     } else {
       // Hard delete if not being used
       await this.prisma.project.delete({ where: { id } });
-      return { message: 'Projeto removido com sucesso' };
+      return { message: "Projeto removido com sucesso" };
     }
+  }
+
+  async findByTenantAndCostCenter(tenantId: string, costCenterId: string) {
+    return this.prisma.project.findMany({
+      where: {
+        tenantId,
+        costCenterId,
+        active: true,
+      },
+      orderBy: { name: "asc" },
+    });
   }
 }
